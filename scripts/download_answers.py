@@ -12,14 +12,20 @@ AGENT_NAME = f"ANSWER-LINK-DOWNLOADER/{VERSION}"
 
 def get_filtered_urls(data: dict[dict[dict[dict[dict]]]]):
     filtered = []
+    folderNames = set()
     for year_key, year in data.items():
         for phase_key, phase in year.items():
             for level_key, level in phase.items():
                 level: dict = level
                 for name, info in level.items():
                     if not info[1]:
+                        folderName = f"{year_key}_{phase_key}_{name}"
+                        if folderName in folderNames: 
+                            filtered.append(((info[0], True), folderName))
+                            continue
                         # url has not been downloaded, append to download later
-                        filtered.append((info[0], f"{year_key}_{phase_key}_{name}"))
+                        filtered.append((info[0], folderName))
+                        folderNames.add(folderName)
     
     return filtered
 
@@ -36,7 +42,13 @@ def update_urls(urls: list[str]): # updates to True
                     mark_flag_as_downloaded(value, target_url)
 
     for url in urls:
-        mark_flag_as_downloaded(answer_data, url[0])
+        # support either a string (downloaded zip url) or a (url, name) pair
+        if isinstance(url, (list, tuple)) and len(url) > 0:
+            target = url[0]
+        else:
+            target = url
+
+        mark_flag_as_downloaded(answer_data, target)
 
     # dump all the urls back in the file
     with open("questions/answer_urls.json", "w") as dump_file:
@@ -45,6 +57,10 @@ def update_urls(urls: list[str]): # updates to True
 
 def download_zip(url: list[str, str], base_folder="questions/answers/"):
     zip_url, name = url[0], url[1]
+    
+    if isinstance(zip_url, (tuple, list)):
+        return True, zip_url
+    
     print(f"downloading zip from url {url}")
     # get zip name from the url to use as a folder name
     subfolder = name
@@ -61,11 +77,19 @@ def download_zip(url: list[str, str], base_folder="questions/answers/"):
     try:
         with zipfile.ZipFile(zip_bytes) as zip:
             for info in zip.infolist():
-                # validate file names to avoid names like "../../path" or "/path"
-                # should only be worrying if the obi website gets hacked and this is targeted
-                if re.search(r"[^\w]", info.filename): # match any character not in a-z, 0-9 or _
-                    invalid_zips[zip_url] = f"Bad File Name {info.filename}"
-                    print(f"zip at {zip_url} contained invalid file name \"{info.filename}\", skipping")
+                # validate file names to avoid names like "../../path" or absolute paths
+                # allow normal filenames with dots and directories, but reject traversal/absolute
+                name = info.filename
+                # normalize separators
+                name_norm = name.replace("\\", "/")
+
+                # skip directory entries
+                if name_norm.endswith("/"):
+                    continue
+
+                if name_norm.startswith("/") or os.path.isabs(name) or any(part == ".." for part in name_norm.split("/")):
+                    invalid_zips[zip_url] = f"Bad File Name {name}"
+                    print(f"zip at {zip_url} contained invalid file name \"{name}\", skipping")
                     return False, zip_url
             zip.extractall(base_folder + subfolder)
     except zipfile.BadZipFile:
@@ -90,12 +114,14 @@ def download_zips_parallel(urls: list[list[str, str]], base_folder="questions/an
     
     return results
 
-def main():
+def main(years: set[str] | None):
     with open("questions/answer_urls.json") as file:
         answer_data = json.load(file)
 
-    answer_urls = get_filtered_urls(answer_data)
+    if years:
+        answer_data = {year: data for year, data in answer_data.items() if year in years}
 
+    answer_urls = get_filtered_urls(answer_data)
 
     # download all the zips
     downloaded = download_zips_parallel(answer_urls)

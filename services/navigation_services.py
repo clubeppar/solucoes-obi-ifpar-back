@@ -1,8 +1,8 @@
 from os.path import abspath
 import json
-from ..errors.invalid_field import InvalidField
-from ..errors.missing_field import MissingField
-from ..errors.content_not_found import ContentNotFound
+from errors.invalid_field import InvalidField
+from errors.missing_field import MissingField
+from errors.content_not_found import ContentNotFound
 
 JSON_DATA = {}
 
@@ -13,8 +13,14 @@ def load_json():
     try:
         with open("./questions/answer_urls.json", "r", encoding="utf-8") as json_file:
             JSON_DATA = json.load(json_file)
+            JSON_DATA = dict(
+                sorted(
+                    JSON_DATA.items(),
+                    key=lambda item: int(item[0]),
+                )
+            )
     except FileNotFoundError:
-        raise FileNotFoundError(f"Missing url json file at '{abspath("./questions/answer_urls.json")}', follow the README to fix")
+        raise FileNotFoundError(f"Missing url json file at '{abspath('./questions/answer_urls.json')}', follow the README to fix")
 
 def validate(year=None, phase=None, level=None, problem=None):
     load_json()
@@ -74,7 +80,9 @@ def nav_levels(year: str, phase: str) -> tuple[dict[str, str | list[str]], int]:
 def nav_problems(year: str, phase: str, level: str) -> tuple[dict[str, str | list[str]], int]:
     validate(year, phase, level)
 
-    answer_url_problems = list(JSON_DATA[year][phase][level].keys())
+    answer_url_problems = [ 
+        (name, data[1]) 
+        for name, data in JSON_DATA[year][phase][level].items() ]
 
     return {
         "ano": year,

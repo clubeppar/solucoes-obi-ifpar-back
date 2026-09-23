@@ -7,10 +7,10 @@ import time
 import psutil
 import shutil
 
-from ..dtos.validate_questions_dto import ValidateQuestionDTO
-from ..errors.content_not_found import ContentNotFound
-from ..errors.not_implemented import NotSupported
-from ..errors.invalid_field import InvalidField
+from dtos.validate_questions_dto import ValidateQuestionDTO
+from errors.content_not_found import ContentNotFound
+from errors.not_implemented import NotSupported
+from errors.invalid_field import InvalidField
 
 def is_subtask_folder(name: str) -> bool:
     return bool(re.match(r"^(:?\d+|teste\d+|test\d+)", name))
@@ -55,6 +55,9 @@ def compile_code(filename: pathlib.Path, file: str) -> tuple[list[str] | None, l
     _, ext = os.path.splitext(filename)
     cmd = None
     tempdir = tempfile.mkdtemp() # store compile artifacts
+
+    compile_error = None
+
     cleanup = [
         lambda: shutil.rmtree(tempdir, ignore_errors=True)
     ]
@@ -67,49 +70,67 @@ def compile_code(filename: pathlib.Path, file: str) -> tuple[list[str] | None, l
     try:
         match ext:
             case ".py":
-                cmd = ["python", path]
+                result = subprocess.run(["python", "-m", "py_compile", path], capture_output=True, text=True)
+                if result.returncode != 0:
+                    compile_error = (result.stderr.strip() or result.stdout.strip())
+                else:
+                    cmd = ["python", path]
             case ".js":
                 cmd = ["node", path]
             case ".c":
                 # compile the file
                 exe = os.path.join(tempdir, "a.out")
-                subprocess.run(["gcc", "-lm", "-O2", "-static", "-x", "c", path, "-o", exe], check=True)
-                cmd = [exe]
+                result = subprocess.run(["gcc", "-lm", "-O2", "-static", "-x", "c", path, "-o", exe], capture_output=True, text=True)
+                if result.returncode != 0:
+                    compile_error = (result.stderr.strip() or result.stdout.strip())
+                else:
+                    cmd = [exe]
             case ".cpp" | ".c++" | ".cc":
                 # compile the file
                 exe = os.path.join(tempdir, "a.out")
-                subprocess.run(["g++", "-std=gnu++20", "-O2", "-static", "-x", "c++", path, "-o", exe], check=True)
-                cmd = [exe]
+                result = subprocess.run(["g++", "-std=gnu++20", "-O2", "-static", "-x", "c++", path, "-o", exe], capture_output=True, text=True)
+                if result.returncode != 0:
+                    compile_error = (result.stderr.strip() or result.stdout.strip())
+                else:
+                    cmd = [exe]
             case ".java":
                 # get class/file name (both must be the same)
                 # f-ing javac, have to rename the file
                 os.rename(path, pathlib.Path(path).parent / f"{filename.name}")
                 path = pathlib.Path(path).parent / f"{filename.name}"
                 class_name = filename.stem
-                subprocess.run(["javac", path], cwd=tempdir, check=True)
-                cmd = ["java", "-cp", tempdir, class_name]
-            
+                result = subprocess.run(["javac", path], cwd=tempdir, capture_output=True, text=True)
+                if result.returncode != 0:
+                    compile_error = (result.stderr.strip() or result.stdout.strip())
+                else:
+                    cmd = ["java", "-cp", tempdir, class_name]
+            case _:
+                compile_error = "Unsupported file extension."
     except Exception as e:
-        print(f"exception when getting command: {e}")
-        print("running cleanup")
-        for command in cleanup:
-            if callable(command):
-                command()
-            else:
-                subprocess.call(command)
+        compile_error = str(e)
 
-    return cmd, cleanup
+    return cmd, cleanup, compile_error
 
 def validate_subtask(path: pathlib.Path, command: list[str]):
     # this folder should contain a list of tasks to compare the file against
     # the current code assumes that it goes in the structure past like 2017 idk
     tests = pair_tests(path)
-    results = {
-        "tests": []
-    }
+    correct_tests = 0
 
+    #  This variable will be later used as an attribute for results
+    tests_attribute = []
+
+
+    # We'll have four possible integer values indicating the execution status in the "success" attribute 
+    # All possible results are: 
+    # 0 -> Error (Outputs do not correspond)
+    # 1 -> Success
+    # 2 -> TLE (Time Limit exceeded)
+    # 3 -> MLE (Memory limit exceeded)
+    # 4 -> RTE (Run Time Error) 
 
     for inp, out in tests:
+
         try:
             inp_file = inp.open()
             stime = time.perf_counter()
@@ -124,8 +145,11 @@ def validate_subtask(path: pathlib.Path, command: list[str]):
             ps_proc = psutil.Process(p.pid)
 
             peak_mem = -1
-            MAX_TIME = 10 # in seconds
+            MAX_TIME = 5 # in seconds
+            MAX_MEMORY = 512 * 1024 * 1024
+
             has_timeouted = False
+            has_exceeded_max_memory = False
             # poll process every 10ms to check it's memory usage
             while True:
                 if p.poll() is not None:
@@ -136,6 +160,11 @@ def validate_subtask(path: pathlib.Path, command: list[str]):
                 try:
                     mem_info = ps_proc.memory_info()
                     peak_mem = max(peak_mem, mem_info.rss)
+
+                    if peak_mem > MAX_MEMORY: 
+                        has_exceeded_max_memory = True 
+                        break 
+
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     break
                 time.sleep(0.010)
@@ -149,6 +178,8 @@ def validate_subtask(path: pathlib.Path, command: list[str]):
             
             if not has_timeouted:
                 stdout, stderr = p.communicate(timeout=10)
+                stdout = stdout.strip()
+                stderr = stderr.strip()
             else:
                 p.kill() # kill it >:(
                 p.wait(10) # wait for it to die
@@ -157,39 +188,86 @@ def validate_subtask(path: pathlib.Path, command: list[str]):
 
             inp_file.close()
 
+            code_input = inp.read_text()
+            expected_output = out.read_text().strip()
+
             if has_timeouted:
                 result = {
-                    "success": False,
+                    "input": code_input,
+                    "correct_output": expected_output,
+                    "user_output": "",
+                    "success": 2,
+                    "error": "",
                     "time": total_time,
                     "memory": peak_mem / (1024 * 1024) # return in Mb
                 }
+
+            elif has_exceeded_max_memory:
+                result = {
+                    "input": code_input,
+                    "correct_output": expected_output,
+                    "user_output": "",
+                    "success": 3,
+                    "error": "",
+                    "time": total_time, 
+                    "memory": peak_mem / (1024 * 1024) # return in Mb
+                }
+
             else:
-                # compare stdout with the output file
+                # compare stdout with the expected output file
 
-                output = out.read_text().strip()
+                if stderr == "" and stdout == expected_output:
+                    correct_tests += 1
 
-                if stderr.strip() == "" and stdout.strip() == output:
                     result = {
-                        "success": True,
+                        "input": code_input,
+                        "correct_output": expected_output,
+                        "user_output": stdout,
+                        "success": 1,
+                        "error": "",
+                        "time": total_time,
+                        "memory": peak_mem / (1024 * 1024) # return in Mb
+                    }
+                elif stderr != "":
+                    result = {
+                        "input": code_input,
+                        "correct_output": expected_output,
+                        "user_output": "",
+                        "success": 4,
+                        "error": stderr,
                         "time": total_time,
                         "memory": peak_mem / (1024 * 1024) # return in Mb
                     }
                 else:
                     result = {
-                        "success": False,
+                        "input": code_input,
+                        "correct_output": expected_output,
+                        "user_output": stdout, 
+                        "success": 0,
+                        "error": "",
                         "time": total_time,
                         "memory": peak_mem / (1024 * 1024) # return in Mb
                     }
         
         except subprocess.TimeoutExpired:
             result = {
-                "success": False,
+                "input": code_input,
+                "correct_output": expected_output,
+                "user_output": "",
+                "success": 2,
+                "error": "",
                 "time": -1,
                 "memory": -1
             }
 
-        results["tests"].append(result)
-    
+        tests_attribute.append(result)
+
+    results = {
+      "total_tests": len(tests),
+       "correct_tests": correct_tests,
+       "tests": tests_attribute
+    }
+
     return results
 
 
@@ -233,18 +311,31 @@ def validate_answers(data: ValidateQuestionDTO):
          os.listdir(folder_path))
     ))
 
+    correct_subtasks = 0 
+    
     response = {
+        "user_code": data.file,
+        "total_subtasks": len(subtasks),
+        "correct_subtasks": correct_subtasks,
         "subtasks": [None for _ in range(len(subtasks))],
         "max_time": float("inf"),
         "max_memory": -1
     }
     # data structure is:
     # response: {
+    #   "user_code": string, 
+    #   "total_subtasks": int,
+    #   "correct_subtasks": int 
     #   "subtasks": [
     #     { # subtask 0 indexed
+    #       "total_tests": int
+    #       "correct_tests": int 
     #       "tests": [ # also 0 indexed
     #         {
-    #         "success": bool,
+    #         "input": string,
+    #         "correct_output": string,
+    #         "user_output": string,
+    #         "success": int,
     #         "time": float,
     #         "memory": int
     #         }
@@ -257,23 +348,29 @@ def validate_answers(data: ValidateQuestionDTO):
 
     # compile/make the command to run the code properly
     
-    if ((result := compile_code(pathlib.Path(data.filename), data.file)) is not None
-        and result[0] is not None):
-        cmd, cleanup = result
+    cmd, cleanup, compile_error = compile_code(pathlib.Path(data.filename), data.file)
 
-        for i, subtask in enumerate(subtasks):
-            response["subtasks"][i] = validate_subtask(subtask, cmd)
-        
-        # cleanup tmp dirs and files
+    if compile_error is not None:
         for command in cleanup:
             if callable(command):
                 command()
             else:
                 subprocess.call(command)
-    else:
-        # no command to run the code was returned
-        # can't fulfill request
-        raise NotSupported("File extension not supported")
+        return {"error": compile_error}, 422
+
+    for i, subtask in enumerate(subtasks):
+        response["subtasks"][i] = validate_subtask(subtask, cmd)
+        
+        if response["subtasks"][i]["total_tests"] == response["subtasks"][i]["correct_tests"]:
+            correct_subtasks += 1
+
+    response["correct_subtasks"] = correct_subtasks
+
+    for command in cleanup:
+        if callable(command):
+            command()
+        else:
+            subprocess.call(command)
 
     # add in the max time and max memory
     response["max_time"] = max(test["time"] for sub in response["subtasks"] for test in sub["tests"])

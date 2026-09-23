@@ -1,5 +1,5 @@
 from flask import Blueprint
-from ..services.navigation_services import nav_years, nav_phases, nav_levels, nav_problems, nav_problem
+from services.navigation_services import nav_years, nav_phases, nav_levels, nav_problems, nav_problem
 
 nav_BP = Blueprint("nav", __name__, url_prefix="/nav")
 
@@ -60,7 +60,7 @@ def get_problems(year: str, phase: str, level: str):
     :>json string ano: Year provided
     :>json string fase: Phase provided
     :>json string nivel: Level provided
-    :>json array questoes: Array of avaliable problems
+    :>json array questoes: Array of avaliable problems (string name and boolean flag)
     """
     return nav_problems(year, phase, level)
 

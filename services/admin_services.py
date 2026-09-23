@@ -2,17 +2,18 @@ from dotenv import load_dotenv
 import os
 from flask import request
 import jwt
-from ..scripts import get_urls
-from ..scripts import download_answers
+from scripts import get_urls
+from scripts import download_answers
+from scripts import update_urls
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-from ..dtos.login_dto import LoginDTO
-from ..dtos.auth_dto import AuthDTO
-from ..dtos.reset_password_dto import ResetPasswordDTO
-from ..errors.unauthorized import Unauthorized
-from ..errors.forbidden import Forbidden
-from ..errors.invalid_field import InvalidField
-from ..errors.missing_field import MissingField
+from dtos.login_dto import LoginDTO
+from dtos.auth_dto import AuthDTO
+from dtos.reset_password_dto import ResetPasswordDTO
+from errors.unauthorized import Unauthorized
+from errors.forbidden import Forbidden
+from errors.invalid_field import InvalidField
+from errors.missing_field import MissingField
 
 load_dotenv()
 
@@ -104,13 +105,22 @@ def reset_password(data: ResetPasswordDTO):
     return {}, 200
 
 @requires_admin
-def clear_urls():
-    get_urls.main()
+def clear_urls(years: list[str] | None):
+    years = set(years) if years else None
+    get_urls.main(years)
     
     return {}, 200
     
 @requires_admin
-def download_zips():
-    download_answers.main()
+def download_zips(years: list[str] | None):
+    years = set(years) if years else None
+    download_answers.main(years)
     
+    return {}, 201
+
+@requires_admin
+def modernize_urls(years: list[str] | None):
+    years = set(years) if years else None
+    update_urls.main(years)
+
     return {}, 201
