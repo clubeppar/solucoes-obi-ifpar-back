@@ -41,12 +41,17 @@ def clear_urls():
     Gets all the answer urls from the OBI website automatically and resets
     their install flag
 
+    :<json list[string] years (optional): years of OBI that the service will get
+
     :reqheader Authorization: Bearer token given by :http:post:`/admin/login`
 
     :status 200: Script ran sucessfully
     :status 403: Invalid auth token or was unauthorized
     """
-    data, status = admin_services.clear_urls()
+    body = request.get_json() or {}
+    years: list[str] | None = body.get("years") or None
+
+    data, status = admin_services.clear_urls(years)
     return data, status
 
 @admin_BP.route("/download_zips", methods=["POST"])
@@ -56,12 +61,17 @@ def download_zips():
     and unzips them to use for the server.
     Only downloads zips with ``flag`` set to false 
 
+    :<json list[string] years (optional): years of OBI that the service will download
+
     :reqheader Authorization: Bearer token given by :http:post:`/admin/login`
 
     :status 200: Script ran sucessfully
     :status 403: Invalid auth token or was unauthorized
     """
-    data, status = admin_services.download_zips()
+    body = request.get_json() or {}
+    years: list[str] | None = body.get("years") or None
+
+    data, status = admin_services.download_zips(years)
     return data, status
 
 @admin_BP.route("/update_urls", methods=["POST"])
@@ -70,11 +80,15 @@ def modernize_urls():
     Gets all the answer urls from the OBI website automatically that haven't 
     been grabbed yet. Set their flags to 'false', if there are any
 
+    :<json list[string] years (optional): years of OBI that the service will get
+
     :reqheader Authorization: Bearer token given by :http:post:`/admin/login`
 
     :status 201: Script ran sucessfully
     :status 403: Invalid auth token or was unauthorized
     """
+    body = request.get_json() or {}
+    years: list[str] | None = body.get("years") or None
 
-    data, status = admin_services.modernize_urls()
+    data, status = admin_services.modernize_urls(years)
     return data, status

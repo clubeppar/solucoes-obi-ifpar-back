@@ -114,12 +114,14 @@ def download_zips_parallel(urls: list[list[str, str]], base_folder="questions/an
     
     return results
 
-def main():
+def main(years: set[str] | None):
     with open("questions/answer_urls.json") as file:
         answer_data = json.load(file)
 
-    answer_urls = get_filtered_urls(answer_data)
+    if years:
+        answer_data = {year: data for year, data in answer_data.items() if year in years}
 
+    answer_urls = get_filtered_urls(answer_data)
 
     # download all the zips
     downloaded = download_zips_parallel(answer_urls)

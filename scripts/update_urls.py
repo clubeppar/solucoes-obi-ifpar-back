@@ -51,8 +51,12 @@ def merge_data(existing: dict, new_data: dict) -> dict:
                     
     return merged
 
-def main():
-    web_scraped_years = get_urls.get_links(r"/passadas/", re.compile(r"^/passadas/OBI.+")) 
+def main(years_set: set[str] | None):
+    web_scraped_years = get_urls.get_links(r"/passadas/", re.compile(r"^/passadas/OBI.+"))
+
+    if years_set:
+        web_scraped_years = [year for year in web_scraped_years if year[13:-1] in years_set]
+
     json_data = load_existing_data()
 
     years = select_new_years(json_years=json_data,web_scraped_years=web_scraped_years)

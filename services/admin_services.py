@@ -105,19 +105,22 @@ def reset_password(data: ResetPasswordDTO):
     return {}, 200
 
 @requires_admin
-def clear_urls():
-    get_urls.main()
+def clear_urls(years: list[str] | None):
+    years = set(years) if years else None
+    get_urls.main(years)
     
     return {}, 200
     
 @requires_admin
-def download_zips():
-    download_answers.main()
+def download_zips(years: list[str] | None):
+    years = set(years) if years else None
+    download_answers.main(years)
     
     return {}, 201
 
 @requires_admin
-def modernize_urls():
-    update_urls.main()
+def modernize_urls(years: list[str] | None):
+    years = set(years) if years else None
+    update_urls.main(years)
 
     return {}, 201

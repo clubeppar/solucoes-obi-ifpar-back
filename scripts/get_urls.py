@@ -137,9 +137,11 @@ def parse_urls(urls: list[dict]):
     
     return parsed
 
-def main():
+def main(years_set: set[str] | None):
     # won't explain all the regex in here, just know they match the links needed
     years = get_links("/passadas/", re.compile(r"^/passadas/OBI.+"))
+    if years_set:
+        years = [year for year in years if year[13:-1] in years_set]
 
     exams = get_links_parallel(years, re.compile(r"^/passadas/OBI\d{4}.+programacao.+"))
     
