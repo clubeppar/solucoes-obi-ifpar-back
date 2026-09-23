@@ -13,6 +13,12 @@ def load_json():
     try:
         with open("./questions/answer_urls.json", "r", encoding="utf-8") as json_file:
             JSON_DATA = json.load(json_file)
+            JSON_DATA = dict(
+                sorted(
+                    JSON_DATA.items(),
+                    key=lambda item: int(item[0]),
+                )
+            )
     except FileNotFoundError:
         raise FileNotFoundError(f"Missing url json file at '{abspath('./questions/answer_urls.json')}', follow the README to fix")
 
