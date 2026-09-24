@@ -2,6 +2,7 @@ import requests, re, json, zipfile, os.path
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pprint import pprint
+from pathlib import Path
 
 # global to print errors at end of program
 invalid_zips = {}
@@ -9,6 +10,9 @@ invalid_zips = {}
 BASE_URL = "https://olimpiada.ic.unicamp.br"
 VERSION = "0.1"
 AGENT_NAME = f"ANSWER-LINK-DOWNLOADER/{VERSION}"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+JSON_PATH = PROJECT_ROOT / "questions" / "answer_urls.json"
+ANSWERS_PATH = str(PROJECT_ROOT / "questions" / "answers") + os.path.sep
 
 def get_filtered_urls(data: dict[dict[dict[dict[dict]]]]):
     filtered = []
@@ -30,7 +34,7 @@ def get_filtered_urls(data: dict[dict[dict[dict[dict]]]]):
     return filtered
 
 def update_urls(urls: list[str]): # updates to True
-    with open("questions/answer_urls.json") as file:
+    with JSON_PATH.open(encoding="utf-8") as file:
         answer_data = json.load(file)
 
     def mark_flag_as_downloaded(object, target_url):
@@ -51,11 +55,11 @@ def update_urls(urls: list[str]): # updates to True
         mark_flag_as_downloaded(answer_data, target)
 
     # dump all the urls back in the file
-    with open("questions/answer_urls.json", "w") as dump_file:
+    with JSON_PATH.open("w", encoding="utf-8") as dump_file:
         json.dump(answer_data, dump_file, indent=2)
 
 
-def download_zip(url: list[str, str], base_folder="questions/answers/"):
+def download_zip(url: list[str, str], base_folder=ANSWERS_PATH):
     zip_url, name = url[0], url[1]
     
     if isinstance(zip_url, (tuple, list)):
@@ -102,7 +106,7 @@ def download_zip(url: list[str, str], base_folder="questions/answers/"):
     # success?
     return True, zip_url
 
-def download_zips_parallel(urls: list[list[str, str]], base_folder="questions/answers/", max_workers=10):
+def download_zips_parallel(urls: list[list[str, str]], base_folder=ANSWERS_PATH, max_workers=10):
     results = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -114,8 +118,8 @@ def download_zips_parallel(urls: list[list[str, str]], base_folder="questions/an
     
     return results
 
-def main(years: set[str] | None):
-    with open("questions/answer_urls.json") as file:
+def main(years: set[str] | None = None):
+    with JSON_PATH.open(encoding="utf-8") as file:
         answer_data = json.load(file)
 
     if years:
