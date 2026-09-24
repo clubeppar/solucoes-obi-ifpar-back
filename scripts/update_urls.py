@@ -9,7 +9,8 @@ try:
 except ModuleNotFoundError:
     import get_urls
 
-JSON_PATH = Path("questions/answer_urls.json")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+JSON_PATH = PROJECT_ROOT / "questions" / "answer_urls.json"
 
 def load_existing_data() -> dict:
     #Carrega o JSON atual se ele existir, caso contrário retorna um dicionário vazio.
@@ -51,7 +52,7 @@ def merge_data(existing: dict, new_data: dict) -> dict:
                     
     return merged
 
-def main(years_set: set[str] | None):
+def main(years_set: set[str] | None = None):
     web_scraped_years = get_urls.get_links(r"/passadas/", re.compile(r"^/passadas/OBI.+"))
 
     if years_set:
@@ -72,8 +73,9 @@ def main(years_set: set[str] | None):
 
     # Junta os dois Jsons em um só
     final_data = merge_data(json_data, new_parsed_data)
-    
-    with JSON_PATH.open("w") as dump_file:
+
+    JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with JSON_PATH.open("w", encoding="utf-8") as dump_file:
         json.dump(final_data, dump_file, indent=2)
 
 if __name__ == "__main__":

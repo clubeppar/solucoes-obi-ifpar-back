@@ -137,7 +137,7 @@ def parse_urls(urls: list[dict]):
     
     return parsed
 
-def main(years_set: set[str] | None):
+def main(years_set: set[str] | None = None):
     # won't explain all the regex in here, just know they match the links needed
     years = get_links("/passadas/", re.compile(r"^/passadas/OBI.+"))
     if years_set:
